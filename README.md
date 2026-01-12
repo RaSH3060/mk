@@ -1,99 +1,82 @@
-# MKXL Trainer
+# Universal Game Trainer
 
-A sophisticated trainer application for Mortal Kombat XL (MK10.exe) with advanced features including pointer reading, macro recording, and input blocking capabilities.
+A complete, ready-to-compile C# Windows Forms application that serves as a universal trainer for games using the dinput8.dll library (a DirectInput proxy DLL for input manipulation).
 
 ## Features
 
-### Pointer Reading
-- Implements multi-level pointer reading according to the specified pattern: `"MK10.exe"+033C8A98` with offsets `8, 130, 108, 78, 90, 120, F20`
+### Multi-level Pointer Reading
+- Reads memory via multi-level pointers (e.g., 'MK10.exe'+033C8A98 with offsets 8, 130, 108, 78, 90, 120, F20)
 - Reads values every 10 milliseconds (configurable)
-- Displays results in hexadecimal format
+- Triggers macros when pointer values match user-defined triggers
 - Supports complex pointer chains for accessing game data
 
-### Macro System
-- Records user input including keyboard presses, mouse clicks, and gamepad inputs
-- Saves and loads macro files (.mkm format)
+### Advanced Macro System
+- Records user input including keyboard presses and gamepad inputs
+- Saves and loads macro configurations to JSON file
 - Executes macros with precise timing control
-- Adjustable start delay (default 280ms, configurable)
+- Adjustable delays (default 280ms for delay after trigger, 260ms for block duration)
 - Supports multiple action types:
   - Keyboard key presses and releases
-  - Mouse clicks
-  - Delays between actions
   - Gamepad button presses
+  - Blocking selected keys during macro execution
 
-### Input Blocking
-- Blocks specific keys during macro execution (configurable)
+### Input Manipulation
+- Blocks specific keys during macro execution (user-selectable)
+- Simulates key presses using dinput8.dll library
 - Prevents user input interference during macro playback
-- Adjustable block delay (default 260ms, configurable)
-- Supports both keyboard and gamepad input blocking
+- Supports both keyboard and gamepad input manipulation
 
 ### Dual Language Support
-- Russian and English interface
-- Automatic language switching
+- English and Russian interface
+- Language toggle in settings
 - All UI elements are properly translated
 
 ### Configuration Management
-- Saves all settings to Windows Registry
+- Saves all settings to "TrainerSettings.json" file
 - Preserves user preferences between sessions
 - Configurable process name detection
 - Adjustable timing parameters
 
 ### User Interface
-- Clean 800x600 interface with tabbed layout
-- Three main tabs: Pointers, Macros, Settings
+- Fixed 800x600 interface with tabbed layout
+- Multiple tabs for different pointer/macro configurations
 - Real-time status indicators
+- Emoji-based interface (no images required)
 - Responsive design with proper error handling
 
 ## Usage Instructions
 
 ### Installation
-1. Place the trainer executable in the same directory as MK10.exe
-2. Ensure the dinput8.dll proxy library is also present
-3. Run the trainer with administrator privileges for best results
-
-### Pointer Tab
-1. Verify the base address and offsets are correct
-2. Click "Start" to begin reading pointer values
-3. Monitor the results in the text box
-4. Click "Stop" to end reading
-
-### Macro Tab
-1. Click "Record" to start recording your actions
-2. Perform the desired keyboard/mouse/gamepad actions
-3. Click "Stop" to finish recording
-4. Click "Execute" to play back the recorded macro
-5. Use "Save" and "Load" to manage macro files
-6. Adjust the start delay as needed
-
-### Settings Tab
-1. Configure the target process name (default: MK10.exe)
-2. Adjust timing parameters:
-   - Read interval (how often pointer values are read)
-   - Block delay (when input blocking starts)
-   - Macro start delay (when macro execution begins)
-3. Select your preferred language
-4. Specify which keys/buttons to block during macro execution
-5. Click "Save Settings" to preserve your configuration
+1. Place the dinput8.dll library next to your game executable
+2. Launch the trainer and click "🔍 Attach" to select the game process
+3. Configure each tab with:
+   - Module name (e.g., "MK10.exe")
+   - Base offset (hexadecimal)
+   - Comma-separated offsets (hexadecimal)
+   - Trigger value to activate the macro
+   - Read interval, block duration, and delay settings
+4. Select keys/buttons to block or simulate
+5. Enable the tab and start the macro recording if needed
 
 ## Technical Details
 
 ### Memory Access
-- Uses Windows API functions for process access
+- Uses Windows API functions for process access (OpenProcess, ReadProcessMemory)
 - Implements safe memory reading with proper error handling
 - Handles multi-level pointer dereferencing
 
-### Input Simulation
-- Uses Windows SendInput API for realistic input simulation
-- Maintains proper timing between actions
-- Supports both keyboard and mouse input
+### Input Manipulation
+- Communicates with dinput8.dll via shared memory ("Local\WinData_Input_Feedback")
+- Overrides input using the SharedInputBuffer structure
+- Supports both keyboard (DIK codes) and gamepad input manipulation
 
 ### Shared Memory Integration
 - Integrates with the provided dinput8.dll proxy system
 - Communicates through shared memory for input manipulation
-- Ensures compatibility with game anti-cheat systems
+- Uses proper locking mechanisms to prevent conflicts
 
 ### Threading Model
-- Separate threads for pointer reading, macro execution, and input blocking
+- Separate threads for each enabled tab's memory reading
 - Proper thread synchronization to prevent race conditions
 - Graceful shutdown of all background processes
 
@@ -101,24 +84,27 @@ A sophisticated trainer application for Mortal Kombat XL (MK10.exe) with advance
 
 - Windows 10 or later
 - .NET 6.0 Runtime
-- Administrative privileges (recommended)
-- Mortal Kombat XL installed
+- Administrative privileges (recommended for memory access)
+- Any game that uses DirectInput and supports dinput8.dll
 
 ## Safety Notes
 
 - This trainer is designed for single-player use only
 - Use responsibly and avoid online multiplayer modes
-- Some antivirus software may flag the application
+- Some antivirus software may flag the application due to memory access
 - The trainer does not modify game files permanently
 
-## Development
+## Compilation
 
-The source code is organized into logical sections:
-- Pointer reading logic
-- Macro recording and playback
-- Input blocking functionality
-- UI components and event handling
-- Configuration management
-- Localization support
+The project uses .NET 6.0 Windows Forms and can be compiled with:
+```
+dotnet build
+```
 
-All features are implemented with proper error handling and resource cleanup.
+Required NuGet packages:
+- System.Text.Json
+- Microsoft.VisualBasic (for Interaction.InputBox)
+
+## Supported Games
+
+This trainer is designed as a universal tool that works with any game that uses DirectInput and supports the dinput8.dll proxy library approach.
