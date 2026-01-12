@@ -10,6 +10,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
 using Microsoft.Win32;
+using System.Runtime.Serialization.Formatters.Binary;
+using System.IO.MemoryMappedFiles;
 
 namespace MKXLTrainer
 {
@@ -33,6 +35,9 @@ namespace MKXLTrainer
 
         [DllImport("user32.dll")]
         public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+        [DllImport("user32.dll")]
+        public static extern bool BlockInput(bool fBlockIt);
 
         [StructLayout(LayoutKind.Sequential)]
         public struct INPUT
@@ -94,7 +99,7 @@ namespace MKXLTrainer
         public const uint MOUSEEVENTF_XDOWN = 0x0080;
         public const uint MOUSEEVENTF_XUP = 0x0100;
         public const uint MOUSEEVENTF_WHEEL = 0x0800;
-        public const uint MOUSEEVENTF_HWHEEL = 0x01000;
+        public const uint MOUSEEVENTF_HWHEEL = 0x1000;
         public const uint MOUSEEVENTF_MOVE = 0x0001;
         public const uint MOUSEEVENTF_ABSOLUTE = 0x8000;
 
@@ -125,8 +130,8 @@ namespace MKXLTrainer
         
         // Settings
         private int pointerReadInterval = 10; // ms
-        private int inputBlockDelay = 260; // ms
-        private int macroStartDelay = 280; // ms
+        private int inputBlockDelay = 260; // ms (adjustable)
+        private int macroStartDelay = 280; // ms (adjustable)
         private string processName = "MK10.exe";
         private string trainerTitle = "MKXL Trainer";
         private bool languageIsRussian = true;
@@ -727,7 +732,7 @@ namespace MKXLTrainer
                     long ptrValue = BitConverter.ToInt64(buffer, 0);
                     currentAddress = IntPtr.Add(new IntPtr(ptrValue), offset);
                 }
-                
+
                 return currentAddress;
             }
             catch (Exception ex)
@@ -752,9 +757,9 @@ namespace MKXLTrainer
             stopRecordMacroBtn.Enabled = true;
             macroListBox.Items.Clear();
             recordedMacro.Clear();
-            
+
             MessageBox.Show(languageIsRussian ? "Началась запись макроса. Нажмите клавиши/кнопки геймпада для записи." : "Macro recording started. Press keys/gamepad buttons to record.");
-            
+
             Thread recordThread = new Thread(RecordMacroLoop);
             recordThread.IsBackground = true;
             recordThread.Start();
@@ -763,7 +768,7 @@ namespace MKXLTrainer
         private void RecordMacroLoop()
         {
             DateTime startTime = DateTime.Now;
-            
+
             while (isMacroRecording)
             {
                 // Check keyboard input
@@ -780,26 +785,26 @@ namespace MKXLTrainer
                                 TimeSpan elapsed = DateTime.Now - startTime;
                                 recordedMacro.Add(new MacroAction(MacroActionType.KeyDown, key: key, delayMs: (int)elapsed.TotalMilliseconds));
                                 startTime = DateTime.Now;
-                                
+
                                 this.Invoke((MethodInvoker)delegate
                                 {
                                     macroListBox.Items.Add($"{languageIsRussian ? "Клавиша" : "Key"} {key} - {languageIsRussian ? "нажата" : "pressed"}");
                                     macroListBox.TopIndex = macroListBox.Items.Count - 1;
                                 });
                             }
-                            
+
                             // Wait until key is released
                             while (GetAsyncKeyState(key) < 0)
                             {
                                 Thread.Sleep(10);
                             }
-                            
+
                             lock (macroLock)
                             {
                                 TimeSpan elapsedAfter = DateTime.Now - startTime;
                                 recordedMacro.Add(new MacroAction(MacroActionType.KeyUp, key: key, delayMs: (int)elapsedAfter.TotalMilliseconds));
                                 startTime = DateTime.Now;
-                                
+
                                 this.Invoke((MethodInvoker)delegate
                                 {
                                     macroListBox.Items.Add($"{languageIsRussian ? "Клавиша" : "Key"} {key} - {languageIsRussian ? "отпущена" : "released"}");
@@ -809,7 +814,54 @@ namespace MKXLTrainer
                         }
                     }
                 }
-                
+
+                // Check mouse input
+                // Mouse left button
+                if (GetAsyncKeyState(Keys.LButton) < 0)
+                {
+                    lock (macroLock)
+                    {
+                        TimeSpan elapsed = DateTime.Now - startTime;
+                        recordedMacro.Add(new MacroAction(MacroActionType.MouseDown, delayMs: (int)elapsed.TotalMilliseconds));
+                        startTime = DateTime.Now;
+
+                        this.Invoke((MethodInvoker)delegate
+                        {
+                            macroListBox.Items.Add($"{languageIsRussian ? "Левая кнопка мыши" : "Left Mouse Button"} - {languageIsRussian ? "нажата" : "clicked"}");
+                            macroListBox.TopIndex = macroListBox.Items.Count - 1;
+                        });
+                    }
+
+                    // Wait until released
+                    while (GetAsyncKeyState(Keys.LButton) < 0)
+                    {
+                        Thread.Sleep(10);
+                    }
+                }
+
+                // Mouse right button
+                if (GetAsyncKeyState(Keys.RButton) < 0)
+                {
+                    lock (macroLock)
+                    {
+                        TimeSpan elapsed = DateTime.Now - startTime;
+                        recordedMacro.Add(new MacroAction(MacroActionType.MouseDown, delayMs: (int)elapsed.TotalMilliseconds));
+                        startTime = DateTime.Now;
+
+                        this.Invoke((MethodInvoker)delegate
+                        {
+                            macroListBox.Items.Add($"{languageIsRussian ? "Правая кнопка мыши" : "Right Mouse Button"} - {languageIsRussian ? "нажата" : "clicked"}");
+                            macroListBox.TopIndex = macroListBox.Items.Count - 1;
+                        });
+                    }
+
+                    // Wait until released
+                    while (GetAsyncKeyState(Keys.RButton) < 0)
+                    {
+                        Thread.Sleep(10);
+                    }
+                }
+
                 Thread.Sleep(10);
             }
         }
@@ -845,12 +897,12 @@ namespace MKXLTrainer
                 MessageBox.Show(languageIsRussian ? "Нет записанных действий для выполнения!" : "No recorded actions to execute!");
                 return;
             }
-            
+
             isMacroRunning = true;
             startStopMacroBtn.Text = languageIsRussian ? "Стоп" : "Stop";
-            
+
             currentMacro = new List<MacroAction>(recordedMacro);
-            
+
             macroThread = new Thread(ExecuteMacroLoop);
             macroThread.IsBackground = true;
             macroThread.Start();
@@ -863,7 +915,7 @@ namespace MKXLTrainer
             {
                 macroThread.Join(1000);
             }
-            
+
             startStopMacroBtn.Text = languageIsRussian ? "Выполнить" : "Execute";
         }
 
@@ -873,13 +925,13 @@ namespace MKXLTrainer
             {
                 // Initial delay
                 Thread.Sleep((int)macroDelayNumeric.Value);
-                
+
                 lock (macroLock)
                 {
                     foreach (var action in currentMacro)
                     {
                         if (!isMacroRunning) break;
-                        
+
                         switch (action.Type)
                         {
                             case MacroActionType.KeyDown:
@@ -889,16 +941,26 @@ namespace MKXLTrainer
                                 SimulateKeyUp(action.Key);
                                 break;
                             case MacroActionType.MouseDown:
-                                // Implementation for mouse actions would go here
+                                SimulateMouseClick(true);
                                 break;
                             case MacroActionType.MouseUp:
-                                // Implementation for mouse actions would go here
+                                SimulateMouseClick(false);
+                                break;
+                            case MacroActionType.MouseMove:
+                                // Not implemented in basic recording
                                 break;
                             case MacroActionType.Delay:
                                 Thread.Sleep(action.DelayMs);
                                 break;
+                            case MacroActionType.GamepadButtonDown:
+                                // Gamepad simulation would go through the shared memory system
+                                SimulateGamepadButton(action.GamepadBtn, true);
+                                break;
+                            case MacroActionType.GamepadButtonUp:
+                                SimulateGamepadButton(action.GamepadBtn, false);
+                                break;
                         }
-                        
+
                         if (action.DelayMs > 0)
                         {
                             Thread.Sleep(action.DelayMs);
@@ -921,7 +983,7 @@ namespace MKXLTrainer
             input.u.ki.dwFlags = 0; // Key down
             input.u.ki.time = 0;
             input.u.ki.dwExtraInfo = IntPtr.Zero;
-            
+
             SendInput(1, new INPUT[] { input }, Marshal.SizeOf(typeof(INPUT)));
         }
 
@@ -934,8 +996,38 @@ namespace MKXLTrainer
             input.u.ki.dwFlags = KEYEVENTF_KEYUP;
             input.u.ki.time = 0;
             input.u.ki.dwExtraInfo = IntPtr.Zero;
-            
+
             SendInput(1, new INPUT[] { input }, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        private void SimulateMouseClick(bool isDown)
+        {
+            INPUT input = new INPUT();
+            input.type = INPUT_MOUSE;
+            
+            if (isDown)
+            {
+                input.u.mi.dwFlags = MOUSEEVENTF_LEFTDOWN;
+            }
+            else
+            {
+                input.u.mi.dwFlags = MOUSEEVENTF_LEFTUP;
+            }
+            
+            input.u.mi.dx = 0;
+            input.u.mi.dy = 0;
+            input.u.mi.mouseData = 0;
+            input.u.mi.time = 0;
+            input.u.mi.dwExtraInfo = IntPtr.Zero;
+
+            SendInput(1, new INPUT[] { input }, Marshal.SizeOf(typeof(INPUT)));
+        }
+
+        private void SimulateGamepadButton(GamepadButton button, bool isDown)
+        {
+            // This would interface with the shared memory system in the DLL
+            // For now, we just log that the action was triggered
+            Debug.WriteLine($"Simulating gamepad button {button} {(isDown ? "down" : "up")}");
         }
 
         private void ClearMacroBtn_Click(object sender, EventArgs e)
@@ -950,7 +1042,7 @@ namespace MKXLTrainer
             {
                 dialog.Filter = languageIsRussian ? "Файлы макросов|*.mkm" : "Macro Files|*.mkm";
                 dialog.Title = languageIsRussian ? "Сохранить макрос" : "Save Macro";
-                
+
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
                     try
@@ -962,7 +1054,7 @@ namespace MKXLTrainer
                                 writer.WriteLine($"{(int)action.Type},{(int)action.Key},{(int)action.GamepadBtn},{action.X},{action.Y},{action.DelayMs}");
                             }
                         }
-                        
+
                         MessageBox.Show(languageIsRussian ? "Макрос успешно сохранен!" : "Macro saved successfully!");
                     }
                     catch (Exception ex)
@@ -979,14 +1071,14 @@ namespace MKXLTrainer
             {
                 dialog.Filter = languageIsRussian ? "Файлы макросов|*.mkm" : "Macro Files|*.mkm";
                 dialog.Title = languageIsRussian ? "Загрузить макрос" : "Load Macro";
-                
+
                 if (dialog.ShowDialog() == DialogResult.OK)
                 {
                     try
                     {
                         recordedMacro.Clear();
                         macroListBox.Items.Clear();
-                        
+
                         using (StreamReader reader = new StreamReader(dialog.FileName))
                         {
                             string line;
@@ -1001,15 +1093,15 @@ namespace MKXLTrainer
                                     int x = int.Parse(parts[3]);
                                     int y = int.Parse(parts[4]);
                                     int delay = int.Parse(parts[5]);
-                                    
+
                                     var action = new MacroAction(type, key, gamepadBtn, x, y, delay);
                                     recordedMacro.Add(action);
-                                    
+
                                     macroListBox.Items.Add(GetActionDescription(action));
                                 }
                             }
                         }
-                        
+
                         MessageBox.Show(languageIsRussian ? "Макрос успешно загружен!" : "Macro loaded successfully!");
                     }
                     catch (Exception ex)
@@ -1028,8 +1120,16 @@ namespace MKXLTrainer
                     return $"{languageIsRussian ? "Клавиша" : "Key"} {action.Key} - {languageIsRussian ? "нажата" : "pressed"}";
                 case MacroActionType.KeyUp:
                     return $"{languageIsRussian ? "Клавиша" : "Key"} {action.Key} - {languageIsRussian ? "отпущена" : "released"}";
+                case MacroActionType.MouseDown:
+                    return $"{languageIsRussian ? "Мышь" : "Mouse"} - {languageIsRussian ? "нажата" : "clicked"}";
+                case MacroActionType.MouseUp:
+                    return $"{languageIsRussian ? "Мышь" : "Mouse"} - {languageIsRussian ? "отпущена" : "released"}";
                 case MacroActionType.Delay:
                     return $"{languageIsRussian ? "Задержка" : "Delay"} {action.DelayMs} {languageIsRussian ? "мс" : "ms"}";
+                case MacroActionType.GamepadButtonDown:
+                    return $"{languageIsRussian ? "Геймпад" : "Gamepad"} {action.GamepadBtn} - {languageIsRussian ? "нажата" : "pressed"}";
+                case MacroActionType.GamepadButtonUp:
+                    return $"{languageIsRussian ? "Геймпад" : "Gamepad"} {action.GamepadBtn} - {languageIsRussian ? "отпущена" : "released"}";
                 default:
                     return $"{languageIsRussian ? "Действие" : "Action"} {action.Type}";
             }
@@ -1045,7 +1145,7 @@ namespace MKXLTrainer
             try
             {
                 RegistryKey key = Registry.CurrentUser.CreateSubKey(@"SOFTWARE\MKXLTrainer");
-                
+
                 key.SetValue("ProcessName", processNameTextBox.Text);
                 key.SetValue("PointerReadInterval", (int)readIntervalNumeric.Value);
                 key.SetValue("InputBlockDelay", (int)blockDelayNumeric.Value);
@@ -1053,17 +1153,17 @@ namespace MKXLTrainer
                 key.SetValue("BaseAddress", baseAddressTextBox.Text);
                 key.SetValue("Offsets", offsetsTextBox.Text);
                 key.SetValue("LanguageIsRussian", languageIsRussian);
-                
+
                 // Save blocked keys
                 string blockedKeysStr = string.Join(",", blockedKeys.Keys);
                 key.SetValue("BlockedKeys", blockedKeysStr);
-                
+
                 // Save blocked gamepad buttons
                 string blockedGamepadStr = string.Join(",", blockedGamepadButtons.Select(b => b.ToString()));
                 key.SetValue("BlockedGamepadButtons", blockedGamepadStr);
-                
+
                 key.Close();
-                
+
                 MessageBox.Show(languageIsRussian ? "Настройки успешно сохранены!" : "Settings saved successfully!");
             }
             catch (Exception ex)
@@ -1077,7 +1177,7 @@ namespace MKXLTrainer
             try
             {
                 RegistryKey key = Registry.CurrentUser.OpenSubKey(@"SOFTWARE\MKXLTrainer");
-                
+
                 if (key != null)
                 {
                     processName = key.GetValue("ProcessName", "MK10.exe").ToString();
@@ -1086,7 +1186,7 @@ namespace MKXLTrainer
                     macroStartDelay = Convert.ToInt32(key.GetValue("MacroStartDelay", 280));
                     baseAddressStr = key.GetValue("BaseAddress", "033C8A98").ToString();
                     string offsetsStr = key.GetValue("Offsets", "").ToString();
-                    
+
                     if (!string.IsNullOrEmpty(offsetsStr))
                     {
                         offsets.Clear();
@@ -1099,9 +1199,9 @@ namespace MKXLTrainer
                             }
                         }
                     }
-                    
+
                     languageIsRussian = Convert.ToBoolean(key.GetValue("LanguageIsRussian", true));
-                    
+
                     // Load blocked keys
                     string blockedKeysStr = key.GetValue("BlockedKeys", "").ToString();
                     if (!string.IsNullOrEmpty(blockedKeysStr))
@@ -1115,7 +1215,7 @@ namespace MKXLTrainer
                             }
                         }
                     }
-                    
+
                     // Load blocked gamepad buttons
                     string blockedGamepadStr = key.GetValue("BlockedGamepadButtons", "").ToString();
                     if (!string.IsNullOrEmpty(blockedGamepadStr))
@@ -1129,7 +1229,7 @@ namespace MKXLTrainer
                             }
                         }
                     }
-                    
+
                     key.Close();
                 }
             }
@@ -1144,7 +1244,7 @@ namespace MKXLTrainer
             StopPointerReading();
             StopMacroExecution();
             StopMacroRecording();
-            
+
             SaveSettings();
             base.OnFormClosed(e);
         }
